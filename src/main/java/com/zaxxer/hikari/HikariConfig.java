@@ -18,6 +18,7 @@ package com.zaxxer.hikari;
 
 import com.codahale.metrics.health.HealthCheckRegistry;
 import com.zaxxer.hikari.metrics.MetricsTrackerFactory;
+import com.zaxxer.hikari.util.PortLock;
 import com.zaxxer.hikari.util.PropertyElf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -1165,15 +1166,14 @@ public class HikariConfig implements HikariConfigMXBean
    {
       final var prefix = "HikariPool-";
       try {
+         PortLock.acquire();
+
          // Pool number is global to the VM to avoid overlapping pool numbers in classloader scoped environments
-         synchronized (System.getProperties()) {
-            final var next = String.valueOf(Integer.getInteger("com.zaxxer.hikari.pool_number", 0) + 1);
-            System.setProperty("com.zaxxer.hikari.pool_number", next);
-            return prefix + next;
-         }
-      } catch (AccessControlException e) {
-         // The SecurityManager didn't allow us to read/write system properties
-         // so just generate a random pool number instead
+        final var next = String.valueOf(Integer.getInteger("com.zaxxer.hikari.pool_number", 0) + 1);
+        System.setProperty("com.zaxxer.hikari.pool_number", next);
+        return prefix + next;
+
+      } catch (Exception e) {
          final var random = ThreadLocalRandom.current();
          final var buf = new StringBuilder(prefix);
 
@@ -1184,6 +1184,8 @@ public class HikariConfig implements HikariConfigMXBean
          LOGGER.info("assigned random pool name '{}' (security manager prevented access to system properties)", buf);
 
          return buf.toString();
+      } finally {
+         PortLock.release();
       }
    }
 
